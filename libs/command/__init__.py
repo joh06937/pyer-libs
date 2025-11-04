@@ -6,7 +6,7 @@ import importlib
 import importlib.metadata
 
 __all__ = [
-	"Command",
+    "Command",
 ]
 
 def run(entryPointsNamespace: str) -> int:
