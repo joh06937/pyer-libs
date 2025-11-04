@@ -352,11 +352,13 @@ class Command:
         self.logger.error(f"Couldn't find sub-command")
         return -1
 
-    def run(self) -> int:
+    def run(self, args: typing.List[object] = None) -> int:
         """Runs the command as the root-most command
 
         :param self:
             Self
+        :param args:
+            Arguments for the command
 
         :return int:
             Our result
@@ -392,7 +394,7 @@ class Command:
         self._addArguments(parser = rootParser)
 
         # Parse the provided arguments
-        args = rootParser.parse_args()
+        args = rootParser.parse_args(args = args)
 
         # The verbosity is global, so handle that, regardless of which command
         # was invoked
@@ -432,7 +434,7 @@ class Command:
 
         # Try to run the command, recursively
         try:
-            return self._runCommand(args = args)
+            result = self._runCommand(args = args)
 
         # If the user stops the command, don't bother letting the exception rise
         # all the way up to the terminal, just do a quiet exit
@@ -440,3 +442,10 @@ class Command:
             self.io.print("^C")
 
             return 1
+
+        # Remove all of the logging handlers we created, just in case we're run
+        # again without this Python instance getting destroyed
+        for logger in args.logger:
+            logger.removeHandler(logger.handlers[0])
+
+        return result
