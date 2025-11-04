@@ -379,7 +379,7 @@ class Command:
             "-v", "--verbose",
             action = "count",
             default = 0,
-            help = "Enable verbose logging (0: critical, 1: error, 2: warning, 3: info, 4: debug, 5: all modules debug)"
+            help = "Enable verbose logging (0: critical, 1: error, 2: warning, 3: info, 4: debug)"
         )
 
         # Also add a logger argument to go along with the verbosity one
@@ -387,7 +387,7 @@ class Command:
             "--logger",
             action = "append",
             default = [],
-            help = "Specify the loggers to set up logging for (can specify multiple times)"
+            help = "Specify the loggers to set up logging for (can specify multiple times; '*' for all)"
         )
 
         # Add our and our sub-commands' arguments, recursively
@@ -406,13 +406,13 @@ class Command:
 
             # Get loggers for our module and all of the log modules we found for
             # our commands
-            args.logger = list(set([ourModule] + self._logModules))
+            args.logger = [logging.getLogger(logger) for logger in list(set([ourModule] + self._logModules))]
 
-        # If they specified enough verbosity, get the root logger (meaning *all*
-        # modules will have their loggers enabled)
-        if args.verbose >= 5:
+        # Else, if they specified all loggers, get the root logger
+        elif (len(args.logger) == 1) and (args.logger[0] == "*"):
             args.logger = [logging.getLogger()]
-        # Else, get the command loggers
+
+        # Else, get the specified loggers
         else:
             args.logger = [logging.getLogger(logger) for logger in args.logger]
 
