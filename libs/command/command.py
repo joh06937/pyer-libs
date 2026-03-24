@@ -151,6 +151,9 @@ class Command:
 
         self._subCommands = subCommands
 
+        # All commands get output
+        self.io = util.Terminal()
+
         # Python loggers should typically be gotten using:
         #
         #    logger = logging.getLogger(__name__)
@@ -162,23 +165,16 @@ class Command:
         # All commands get a logger by default
         self.logger = logging.getLogger(moduleLocation)
 
-        # All commands get output
-        self.io = util.Terminal()
-
-        # Note the location of this command's module so that all of its
-        # package's loggers can get verbosity applied by our root command (when
-        # we get to that point during run())
-        self._logModules = [moduleLocation.split(".")[0]]
+        # Note the location of this command's module
+        self._commandModules = [moduleLocation]
 
         # Also add all of our sub-commands' log modules so that the full command
         # structure's log modules all get bubbled up to the root one
         #
-        # This isn't the most efficient way to do this -- we could probably
-        # adjust a class variable or something -- but it's strings and this is
-        # Python (and we're already grabbing the module names for other reasons)
-        # so it's not really all that impactful.
+        # Note that we might get some duplicates doing this, but we'll handle
+        # that later when we actually use this list.
         for subCommand in self._subCommands:
-            self._logModules = list(set(self._logModules + subCommand._logModules))
+            self._commandModules += subCommand._commandModules
 
     def _justifyLines(self, lines: typing.List[str], columns: int) -> typing.List[str]:
         """Justifies lines of text to a column width
@@ -402,12 +398,13 @@ class Command:
         #
         # If there weren't any loggers specified
         if len(args.logger) < 1:
-            # Get the package that Command is under
-            ourModule = inspect.getmodule(Command).__name__.split(".")[0]
+            # Remove duplicates in our list by converting to a set first (which
+            # doesn't allow duplicates) and then back to a list
+            commandModules = list(set(self._commandModules))
 
             # Get loggers for our module and all of the log modules we found for
             # our commands
-            args.logger = [logging.getLogger(logger) for logger in list(set([ourModule] + self._logModules))]
+            args.logger = [logging.getLogger(logger) for logger in commandModules]
 
         # Else, if they specified all loggers, get the root logger
         elif (len(args.logger) == 1) and (args.logger[0] == "*"):
