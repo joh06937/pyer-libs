@@ -165,11 +165,16 @@ class Command:
         # All commands get a logger by default
         self.logger = logging.getLogger(moduleName)
 
-        # Note the location of this command's module
+        # Note the location of this command's module name
         self._commandModuleName = [moduleName]
 
-        # Also add all of our sub-commands' log modules so that the full command
-        # structure's log modules all get bubbled up to the root one
+        # Also add all of our sub-commands' log module names so that the full
+        # command tree's log module names all get bubbled up to the root one
+        #
+        # Sub-command objects have to be instantiated before they get passed in
+        # to us with our `__init__()` `subCommands` parameter, so there's never
+        # a worry their own command and sub-command module names list won't be
+        # available for us to keep bubbling.
         #
         # Note that we might get some duplicates doing this, but we'll handle
         # that later when we actually use this list.
@@ -412,23 +417,34 @@ class Command:
         # additional ones specified in the command invocation
         else:
             # Start with the list of all command class modules
+            #
+            # Note that we're in the API used on the root-most command (by
+            # design, anyway; if this is misused or abused, that's not our
+            # problem), so at this point we (should) have a complete list of
+            # every command in the tree.
             commandModuleNames = self._commandModuleNames
 
             # Get the base Command class' module (name)
             baseCommandModuleName = inspect.getmodule(Command).__name__
 
             # If present, remove the base command class logger from the module
-            # list, in the event the base command class was instantiated
-            # directly as the root
+            # list
             #
-            # As mentioned in _runCommand, we don't want the sequencing handling
-            # to appear by default, only when specifically asked for (or
-            # wildcarded).
+            # This will handle the case where the root command object didn't
+            # derive the base Command class, but instead was just a direct
+            # instantiation of that class. If we didn't remove it here, then the
+            # base parsing of commands and whatnot above would always appear in
+            # the logging output, and that's what we're trying to avoid. We'll
+            # still handle the case where the user wants that logging
+            # specifically below.
             if baseCommandModuleName in commandModuleNames:
                 commandModuleNames.remove(baseCommandModuleName)
 
-            # If there were any loggers specified in the root command, also add
-            # those
+            # If there were any loggers specified in the command invocation,
+            # also add those
+            #
+            # This is where the logger for the base Command class can be added
+            # back in explicitly by the user.
             if len(args.logger) > 0:
                 commandModuleNames += args.logger
 
