@@ -166,7 +166,7 @@ class Command:
         self.logger = logging.getLogger(moduleName)
 
         # Note the location of this command's module name
-        self._commandModuleName = [moduleName]
+        self._commandModuleNames = [moduleName]
 
         # Also add all of our sub-commands' log module names so that the full
         # command tree's log module names all get bubbled up to the root one
