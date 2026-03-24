@@ -401,11 +401,16 @@ class Command:
         # Parse the provided arguments
         args = rootParser.parse_args(args = args)
 
-        # The verbosity is global, so handle that, regardless of which command
-        # was invoked
-        #
-        # If there weren't any loggers specified
-        if len(args.logger) < 1:
+        # The verbosity is driven by the root-most command and is applied to all
+        # sub-commands, so handle that, regardless of which command was invoked
+
+        # If they specified all loggers, get the root logger
+        if (len(args.logger) == 1) and (args.logger[0] == "*"):
+            args.logger = [logging.getLogger()]
+
+        # Else, get our default list of command modules and handle any
+        # additional ones specified in the command invocation
+        else:
             # Remove duplicates in our list by converting to a set first (which
             # doesn't allow duplicates) and then back to a list
             commandModules = list(set(self._commandModules))
@@ -423,17 +428,14 @@ class Command:
             if baseCommandModule in commandModules:
                 commandModules.remove(baseCommandModule)
 
+            # If there were any loggers specified in the root command, also add
+            # those
+            if len(args.logger) > 0:
+                commandModules += args.logger
+
             # Get loggers for our module and all of the log modules we found for
             # our commands
             args.logger = [logging.getLogger(logger) for logger in commandModules]
-
-        # Else, if they specified all loggers, get the root logger
-        elif (len(args.logger) == 1) and (args.logger[0] == "*"):
-            args.logger = [logging.getLogger()]
-
-        # Else, get the specified loggers
-        else:
-            args.logger = [logging.getLogger(logger) for logger in args.logger]
 
         for logger in args.logger:
             # Set the appropriate logging level
