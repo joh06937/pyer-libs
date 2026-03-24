@@ -3,6 +3,7 @@ import libs.util as util
 import argparse
 import inspect
 import logging
+import sys
 import textwrap
 import typing
 
@@ -150,34 +151,35 @@ class Command:
 
         self._subCommands = subCommands
 
+        # All commands get output
+        self.io = util.Terminal()
+
         # Python loggers should typically be gotten using:
         #
         #    logger = logging.getLogger(__name__)
         #
         # For the commands we're a base class of, that would be their
         # package/module location, so get that using the inspect library.
-        moduleLocation = inspect.getmodule(self.__class__).__name__
+        moduleName = inspect.getmodule(self.__class__).__name__
 
         # All commands get a logger by default
-        self.logger = logging.getLogger(moduleLocation)
+        self.logger = logging.getLogger(moduleName)
 
-        # All commands get output
-        self.io = util.Terminal()
+        # Note the location of this command's module name
+        self._commandModuleNames = [moduleName]
 
-        # Note the location of this command's module so that all of its
-        # package's loggers can get verbosity applied by our root command (when
-        # we get to that point during run())
-        self._logModules = [moduleLocation.split(".")[0]]
-
-        # Also add all of our sub-commands' log modules so that the full command
-        # structure's log modules all get bubbled up to the root one
+        # Also add all of our sub-commands' log module names so that the full
+        # command tree's log module names all get bubbled up to the root one
         #
-        # This isn't the most efficient way to do this -- we could probably
-        # adjust a class variable or something -- but it's strings and this is
-        # Python (and we're already grabbing the module names for other reasons)
-        # so it's not really all that impactful.
+        # Sub-command objects have to be instantiated before they get passed in
+        # to us with our `__init__()` `subCommands` parameter, so there's never
+        # a worry their own command and sub-command module names list won't be
+        # available for us to keep bubbling.
+        #
+        # Note that we might get some duplicates doing this, but we'll handle
+        # that later when we actually use this list.
         for subCommand in self._subCommands:
-            self._logModules = list(set(self._logModules + subCommand._logModules))
+            self._commandModuleNames += subCommand._commandModuleNames
 
     def _justifyLines(self, lines: typing.List[str], columns: int) -> typing.List[str]:
         """Justifies lines of text to a column width
@@ -306,14 +308,22 @@ class Command:
             The result of running the command
         """
 
-        self.logger.debug(f"Letting this command ('{self._name}') have a go")
+        # Make a logger specifically for logging this base command sequencing
+        #
+        # This logger is separate from the loggers added to each class, as it's
+        # for base handling (which isn't specific to the command actually being
+        # run), and we want it to only show up when additional loggers (ours
+        # specifically, or all loggers) are requested.
+        logger = logging.getLogger(__name__)
+
+        logger.debug(f"Letting this command ('{self._name}') have a go")
 
         # Always give ourselves the chance to handle this command
         result = self.runCommand(args = args)
 
         # If we handled it, use that as our result
         if result is not None:
-            self.logger.debug(f"Command handled ({result})")
+            logger.debug(f"Command handled ({result})")
             return result
 
         # If this command doesn't have sub-commands available, er, nobody
@@ -322,7 +332,7 @@ class Command:
         # This could be an error, or it could just be a careless command that
         # didn't return a result, so just call this a success.
         if len(self._subCommands) < 1:
-            self.logger.debug("Command not handled ourselves, and no sub-commands available")
+            logger.debug("Command not handled ourselves, and no sub-commands available")
             return 0
 
         # Get the sub-command of this command that was invoked, if any
@@ -331,10 +341,10 @@ class Command:
         # If there wasn't an invoked sub-command, er, nobody handled it,
         # apparently
         if (subCommandName is None) or (subCommandName == ""):
-            self.logger.error("Please select one of the available sub-commands")
+            logger.error("Please select one of the available sub-commands")
             return -1
 
-        self.logger.debug(f"Sub-command '{subCommandName}' invoked, finding it...")
+        logger.debug(f"Sub-command '{subCommandName}' invoked, finding it...")
 
         # Find the command to run
         for subCommand in self._subCommands:
@@ -342,14 +352,14 @@ class Command:
             if subCommand._name != subCommandName:
                 continue
 
-            self.logger.debug("Found sub-command")
+            logger.debug("Found sub-command")
 
             # This was the invoked command, so run it and use its result as ours
             return subCommand._runCommand(args = args)
 
         # We didn't find the matching command (somehow, since argparse is
         # supposed to handle that), so return an error
-        self.logger.error(f"Couldn't find sub-command")
+        logger.error(f"Couldn't find sub-command")
         return -1
 
     def run(self, args: typing.List[object] = None) -> int:
@@ -379,12 +389,25 @@ class Command:
             "-v", "--verbose",
             action = "count",
             default = 0,
-            help = "Enable verbose logging (0: critical, 1: error, 2: warning, 3: info, 4: debug)"
+            help = "Set the logging level (use multiple times; 0: critical, 1: error, 2: warning, 3: info, 4: debug)"
+        )
+
+        # Also add an explicit verbosity argument for doing it by name
+        rootParser.add_argument(
+            "--log-level",
+            choices = [
+                "critical",
+                "error",
+                "warning",
+                "info",
+                "debug"
+            ],
+            help = "Specify the logging level"
         )
 
         # Also add a logger argument to go along with the verbosity one
         rootParser.add_argument(
-            "--logger",
+            "-l", "--logger",
             action = "append",
             default = [],
             help = "Specify the loggers to set up logging for (can specify multiple times; '*' for all)"
@@ -396,29 +419,61 @@ class Command:
         # Parse the provided arguments
         args = rootParser.parse_args(args = args)
 
-        # The verbosity is global, so handle that, regardless of which command
-        # was invoked
-        #
-        # If there weren't any loggers specified
-        if len(args.logger) < 1:
-            # Get the package that Command is under
-            ourModule = inspect.getmodule(Command).__name__.split(".")[0]
+        # The verbosity is driven by the root-most command and is applied to all
+        # sub-commands, so handle that, regardless of which command was invoked
+
+        # If they specified all loggers, get the root logger
+        if (len(args.logger) == 1) and (args.logger[0] == "*"):
+            args.logger = [logging.getLogger()]
+
+        # Else, get our default list of command modules and handle any
+        # additional ones specified in the command invocation
+        else:
+            # Start with the list of all command class modules
+            #
+            # Note that we're in the API used on the root-most command (by
+            # design, anyway; if this is misused or abused, that's not our
+            # problem), so at this point we (should) have a complete list of
+            # every command in the tree.
+            commandModuleNames = self._commandModuleNames
+
+            # Get the base Command class' module (name)
+            baseCommandModuleName = inspect.getmodule(Command).__name__
+
+            # If present, remove the base command class logger from the module
+            # list
+            #
+            # This will handle the case where the root command object didn't
+            # derive the base Command class, but instead was just a direct
+            # instantiation of that class. If we didn't remove it here, then the
+            # base parsing of commands and whatnot above would always appear in
+            # the logging output, and that's what we're trying to avoid. We'll
+            # still handle the case where the user wants that logging
+            # specifically below.
+            if baseCommandModuleName in commandModuleNames:
+                commandModuleNames.remove(baseCommandModuleName)
+
+            # If there were any loggers specified in the command invocation,
+            # also add those
+            #
+            # This is where the logger for the base Command class can be added
+            # back in explicitly by the user.
+            if len(args.logger) > 0:
+                commandModuleNames += args.logger
+
+            # Deduplicate loggers by converting to a set (which filters out
+            # duplicates automatically), and then back to a list
+            commandModuleNames = list(set(commandModuleNames))
 
             # Get loggers for our module and all of the log modules we found for
             # our commands
-            args.logger = [logging.getLogger(logger) for logger in list(set([ourModule] + self._logModules))]
-
-        # Else, if they specified all loggers, get the root logger
-        elif (len(args.logger) == 1) and (args.logger[0] == "*"):
-            args.logger = [logging.getLogger()]
-
-        # Else, get the specified loggers
-        else:
-            args.logger = [logging.getLogger(logger) for logger in args.logger]
+            args.logger = [logging.getLogger(logger) for logger in commandModuleNames]
 
         for logger in args.logger:
             # Set the appropriate logging level
-            if args.verbose >= 4:
+            if args.log_level is not None:
+                logger.setLevel(getattr(logging, args.log_level.upper()))
+            elif args.verbose >= 4:
                 logger.setLevel(logging.DEBUG)
             elif args.verbose >= 3:
                 logger.setLevel(logging.INFO)
@@ -429,7 +484,7 @@ class Command:
             else:
                 logger.setLevel(logging.CRITICAL)
 
-            handler = logging.StreamHandler()
+            handler = logging.StreamHandler(sys.stdout)
             logger.addHandler(handler)
 
         # Try to run the command, recursively
