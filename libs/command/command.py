@@ -303,14 +303,22 @@ class Command:
             The result of running the command
         """
 
-        self.logger.debug(f"Letting this command ('{self._name}') have a go")
+        # Make a logger specifically for logging this base command sequencing
+        #
+        # This logger is separate from the loggers added to each class, as it's
+        # for base handling (which isn't specific to the command actually being
+        # run), and we want it to only show up when additional loggers (ours
+        # specifically, or all loggers) are requested.
+        logger = logging.getLogger(__name__)
+
+        logger.debug(f"Letting this command ('{self._name}') have a go")
 
         # Always give ourselves the chance to handle this command
         result = self.runCommand(args = args)
 
         # If we handled it, use that as our result
         if result is not None:
-            self.logger.debug(f"Command handled ({result})")
+            logger.debug(f"Command handled ({result})")
             return result
 
         # If this command doesn't have sub-commands available, er, nobody
@@ -319,7 +327,7 @@ class Command:
         # This could be an error, or it could just be a careless command that
         # didn't return a result, so just call this a success.
         if len(self._subCommands) < 1:
-            self.logger.debug("Command not handled ourselves, and no sub-commands available")
+            logger.debug("Command not handled ourselves, and no sub-commands available")
             return 0
 
         # Get the sub-command of this command that was invoked, if any
@@ -328,10 +336,10 @@ class Command:
         # If there wasn't an invoked sub-command, er, nobody handled it,
         # apparently
         if (subCommandName is None) or (subCommandName == ""):
-            self.logger.error("Please select one of the available sub-commands")
+            logger.error("Please select one of the available sub-commands")
             return -1
 
-        self.logger.debug(f"Sub-command '{subCommandName}' invoked, finding it...")
+        logger.debug(f"Sub-command '{subCommandName}' invoked, finding it...")
 
         # Find the command to run
         for subCommand in self._subCommands:
@@ -339,14 +347,14 @@ class Command:
             if subCommand._name != subCommandName:
                 continue
 
-            self.logger.debug("Found sub-command")
+            logger.debug("Found sub-command")
 
             # This was the invoked command, so run it and use its result as ours
             return subCommand._runCommand(args = args)
 
         # We didn't find the matching command (somehow, since argparse is
         # supposed to handle that), so return an error
-        self.logger.error(f"Couldn't find sub-command")
+        logger.error(f"Couldn't find sub-command")
         return -1
 
     def run(self, args: typing.List[object] = None) -> int:
@@ -401,6 +409,19 @@ class Command:
             # Remove duplicates in our list by converting to a set first (which
             # doesn't allow duplicates) and then back to a list
             commandModules = list(set(self._commandModules))
+
+            # Get the base Command class' module (name)
+            baseCommandModule = inspect.getmodule(Command).__name__
+
+            # If present, remove the base command class logger from the module
+            # list, in the event the base command class was instantiated
+            # directly as the root
+            #
+            # As mentioned in _runCommand, we don't want the sequencing handling
+            # to appear by default, only when specifically asked for (or
+            # wildcarded).
+            if baseCommandModule in commandModules:
+                commandModules.remove(baseCommandModule)
 
             # Get loggers for our module and all of the log modules we found for
             # our commands
