@@ -389,7 +389,7 @@ class Command:
             "-v", "--verbose",
             action = "count",
             default = 0,
-            help = "Enable verbose logging (0: critical, 1: error, 2: warning, 3: info, 4: debug)"
+            help = "Set the logging level (use multiple times; 0: critical, 1: error, 2: warning, 3: info, 4: debug)"
         )
 
         # Also add a logger argument to go along with the verbosity one
