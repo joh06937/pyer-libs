@@ -384,7 +384,7 @@ class Command:
 
         # Also add a logger argument to go along with the verbosity one
         rootParser.add_argument(
-            "--logger",
+            "-l", "--logger",
             action = "append",
             default = [],
             help = "Specify the loggers to set up logging for (can specify multiple times; '*' for all)"
