@@ -411,9 +411,8 @@ class Command:
         # Else, get our default list of command modules and handle any
         # additional ones specified in the command invocation
         else:
-            # Remove duplicates in our list by converting to a set first (which
-            # doesn't allow duplicates) and then back to a list
-            commandModuleNames = list(set(self._commandModuleNames))
+            # Start with the list of all command class modules
+            commandModuleNames = self._commandModuleNames
 
             # Get the base Command class' module (name)
             baseCommandModuleName = inspect.getmodule(Command).__name__
@@ -432,6 +431,10 @@ class Command:
             # those
             if len(args.logger) > 0:
                 commandModuleNames += args.logger
+
+            # Deduplicate loggers by converting to a set (which filters out
+            # duplicates automatically), and then back to a list
+            commandModuleNames = list(set(commandModuleNames))
 
             # Get loggers for our module and all of the log modules we found for
             # our commands
