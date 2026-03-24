@@ -3,6 +3,7 @@ import libs.util as util
 import argparse
 import inspect
 import logging
+import sys
 import textwrap
 import typing
 
@@ -429,7 +430,7 @@ class Command:
             else:
                 logger.setLevel(logging.CRITICAL)
 
-            handler = logging.StreamHandler()
+            handler = logging.StreamHandler(sys.stdout)
             logger.addHandler(handler)
 
         # Try to run the command, recursively
