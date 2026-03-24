@@ -160,13 +160,13 @@ class Command:
         #
         # For the commands we're a base class of, that would be their
         # package/module location, so get that using the inspect library.
-        moduleLocation = inspect.getmodule(self.__class__).__name__
+        moduleName = inspect.getmodule(self.__class__).__name__
 
         # All commands get a logger by default
-        self.logger = logging.getLogger(moduleLocation)
+        self.logger = logging.getLogger(moduleName)
 
         # Note the location of this command's module
-        self._commandModules = [moduleLocation]
+        self._commandModuleName = [moduleName]
 
         # Also add all of our sub-commands' log modules so that the full command
         # structure's log modules all get bubbled up to the root one
@@ -174,7 +174,7 @@ class Command:
         # Note that we might get some duplicates doing this, but we'll handle
         # that later when we actually use this list.
         for subCommand in self._subCommands:
-            self._commandModules += subCommand._commandModules
+            self._commandModuleNames += subCommand._commandModuleNames
 
     def _justifyLines(self, lines: typing.List[str], columns: int) -> typing.List[str]:
         """Justifies lines of text to a column width
@@ -413,10 +413,10 @@ class Command:
         else:
             # Remove duplicates in our list by converting to a set first (which
             # doesn't allow duplicates) and then back to a list
-            commandModules = list(set(self._commandModules))
+            commandModuleNames = list(set(self._commandModuleNames))
 
             # Get the base Command class' module (name)
-            baseCommandModule = inspect.getmodule(Command).__name__
+            baseCommandModuleName = inspect.getmodule(Command).__name__
 
             # If present, remove the base command class logger from the module
             # list, in the event the base command class was instantiated
@@ -425,17 +425,17 @@ class Command:
             # As mentioned in _runCommand, we don't want the sequencing handling
             # to appear by default, only when specifically asked for (or
             # wildcarded).
-            if baseCommandModule in commandModules:
-                commandModules.remove(baseCommandModule)
+            if baseCommandModuleName in commandModuleNames:
+                commandModuleNames.remove(baseCommandModuleName)
 
             # If there were any loggers specified in the root command, also add
             # those
             if len(args.logger) > 0:
-                commandModules += args.logger
+                commandModuleNames += args.logger
 
             # Get loggers for our module and all of the log modules we found for
             # our commands
-            args.logger = [logging.getLogger(logger) for logger in commandModules]
+            args.logger = [logging.getLogger(logger) for logger in commandModuleNames]
 
         for logger in args.logger:
             # Set the appropriate logging level
