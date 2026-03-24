@@ -392,6 +392,19 @@ class Command:
             help = "Set the logging level (use multiple times; 0: critical, 1: error, 2: warning, 3: info, 4: debug)"
         )
 
+        # Also add an explicit verbosity argument for doing it by name
+        rootParser.add_argument(
+            "--log-level",
+            choices = [
+                "critical",
+                "error",
+                "warning",
+                "info",
+                "debug"
+            ],
+            help = "Specify the logging level"
+        )
+
         # Also add a logger argument to go along with the verbosity one
         rootParser.add_argument(
             "-l", "--logger",
@@ -458,7 +471,9 @@ class Command:
 
         for logger in args.logger:
             # Set the appropriate logging level
-            if args.verbose >= 4:
+            if args.log_level is not None:
+                logger.setLevel(getattr(logging, args.log_level.upper()))
+            elif args.verbose >= 4:
                 logger.setLevel(logging.DEBUG)
             elif args.verbose >= 3:
                 logger.setLevel(logging.INFO)
